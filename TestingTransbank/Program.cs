@@ -6,6 +6,9 @@ using System.Drawing;
 using System.Globalization;
 using System.IO.Ports;
 using System.Text;
+using Microsoft.Extensions.Configuration;
+using System.Text.Json;
+using SalidaAutomaticaQR.Models;
 
 public enum ReceiptType
 {
@@ -43,6 +46,8 @@ class Program
 
         Console.WriteLine("Impresoras disponibles:");
 
+        Console.WriteLine();
+
         for (int i = 0; i < printers.Count; i++)
         {
 
@@ -50,11 +55,15 @@ class Program
 
         }
 
-        Console.WriteLine("Seleccione el número de la impresora a utilizar:");
+        Console.WriteLine($"\nSeleccione el número de la impresora a utilizar (1 - {printers.Count}):");
 
         int printerIndex;
 
+        Console.WriteLine();
+
         string printerInput = Console.ReadLine();
+
+        Console.WriteLine();
 
         while (!int.TryParse(printerInput, out printerIndex) || printerIndex < 1 || printerIndex > printers.Count)
         {
@@ -76,13 +85,15 @@ class Program
         if (ports == null || ports.Count == 0)
         {
 
-            Console.WriteLine("No se encontraron puertos disponibles.");
+            Console.WriteLine("No se encontraron puertos disponibles del POS.");
 
             return;
 
         }
 
         Console.WriteLine("Puertos disponibles:");
+
+        Console.WriteLine();
 
         for (int i = 0; i < ports.Count; i++)
         {
@@ -91,11 +102,15 @@ class Program
 
         }
 
-        Console.WriteLine("Seleccione el número del puerto a utilizar:");
+        Console.WriteLine($"\nSeleccione el número del puerto a utilizar (1 - {ports.Count}):");
 
         int portIndex;
 
+        Console.WriteLine();
+
         string portInput = Console.ReadLine();
+
+        Console.WriteLine();
 
         while (!int.TryParse(portInput, out portIndex) || portIndex < 1 || portIndex > ports.Count)
         {
@@ -109,6 +124,91 @@ class Program
         string selectedPort = ports[portIndex - 1];
         #endregion
 
+        #region Seleccionar base de datos
+
+        // Configuración
+        var config = new ConfigurationBuilder()
+
+            .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+
+            .Build();
+
+        var conexiones = config.GetSection("Conexiones").GetChildren().ToDictionary(x => x.Key, x => x.Value);
+
+        string[] opciones = conexiones.Keys.ToArray();
+
+        string claveSeleccionada = "";
+
+        string cadenaConexion = "";
+
+        bool conexionExitosa = false;
+
+        while (!conexionExitosa)
+        {
+
+            Console.WriteLine("Bases de datos disponibles:");
+
+            Console.WriteLine();
+
+            for (int i = 0; i < opciones.Length; i++)
+            {
+
+                Console.WriteLine($"{i + 1}. {FormatoNombre(opciones[i])}");
+
+            }
+
+            int seleccion = 0;
+
+            while (seleccion < 1 || seleccion > opciones.Length)
+            {
+
+                Console.Write("\nIngrese una opción (1 - 6): ");
+
+                int.TryParse(Console.ReadLine(), out seleccion);
+
+                if (seleccion < 1 || seleccion > opciones.Length)
+                {
+
+                    Console.WriteLine($"\nOpción inválida. Debe ser un número entre 1 y {opciones.Length}");
+
+                }
+
+            }
+
+            claveSeleccionada = opciones[seleccion - 1];
+
+            cadenaConexion = conexiones[claveSeleccionada];
+
+            Console.WriteLine($"\n⏳ Probando conexión a: {FormatoNombre(claveSeleccionada)}...");
+
+            await ActualizarConexionEnJson(claveSeleccionada, conexiones);
+
+            // Probar la conexión
+            conexionExitosa = await ProbarConexion();
+
+            if (conexionExitosa)
+            {
+
+                Console.WriteLine($"\n[MAIN THREAD] ✅ Conexión exitosa!");
+
+                break;
+
+            }
+
+            else
+            {
+
+                Console.WriteLine($"\nError: No se pudo establecer conexión con {FormatoNombre(claveSeleccionada)}");
+
+                Console.WriteLine("\nPor favor, seleccione otra opción.");
+
+            }
+
+        }
+
+        Console.WriteLine($"\nConexión establecida: {FormatoNombre(claveSeleccionada)}");
+        
+        #endregion
 
         try
         {
@@ -228,6 +328,69 @@ class Program
             POSAutoservicio.Instance.ClosePort();
 
             Console.WriteLine("Error al realizar la venta: " + ex.Message);
+
+        }
+
+    }
+
+    static string FormatoNombre(string clave)
+    {
+
+        return clave
+
+        .Replace("Estacionamiento", "Estacionamiento ")
+
+        .Replace("Desarrollo", " (Desarrollo)")
+
+        .Replace("OrellaUno", "Orella Uno")
+
+        .Replace("OrellaDos", "Orella Dos")
+
+        .Replace("21DeMayo", "21 de Mayo")
+
+        .Trim();
+
+    }
+
+    static async Task ActualizarConexionEnJson(string claveSeleccionada, Dictionary<string, string> conexiones)
+    {
+
+        var nuevoJson = new
+        {
+
+            ConexionSeleccionada = claveSeleccionada,
+
+            Conexiones = conexiones
+
+        };
+
+        await File.WriteAllTextAsync("appsettings.json", JsonSerializer.Serialize(nuevoJson, new JsonSerializerOptions { WriteIndented = true }));
+
+    }
+
+    static async Task<bool> ProbarConexion()
+    {
+
+        try
+        {
+
+            using (var context = new EstacionamientoContext())
+            {
+
+                var estadoConexion = await context.Database.CanConnectAsync();
+
+                return estadoConexion;
+
+            }
+
+        }
+
+        catch (Exception ex)
+        {
+
+            Console.WriteLine($"Error de conexión: {ex.Message}");
+
+            return false;
 
         }
 
@@ -602,21 +765,33 @@ public class Printer
     // Método para verificar si la impresora está disponible
     public bool IsPrinterAvailable()
     {
+
         try
         {
+
             foreach (string printer in PrinterSettings.InstalledPrinters)
             {
+
                 if (printer.Equals(_printerName, StringComparison.OrdinalIgnoreCase))
                 {
+
                     return true;
+
                 }
+
             }
+
             return false;
+
         }
+
         catch
         {
+
             return false;
+
         }
+
     }
 
     // Método para listar impresoras disponibles
