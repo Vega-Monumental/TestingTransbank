@@ -7,12 +7,70 @@ using System.Globalization;
 using System.IO.Ports;
 using System.Text;
 
+public enum ReceiptType
+{
+
+    Sale,
+
+    Close
+
+}
+
 class Program
 {
 
     static async Task Main(string[] args)
     {
 
+        #region Seleccionar impresora
+        List<string> printers = new List<string>();
+
+        foreach (string installedPrinter in PrinterSettings.InstalledPrinters)
+        {
+
+            printers.Add(installedPrinter);
+
+        }
+
+        if (printers.Count == 0)
+        {
+
+            Console.WriteLine("No se encontraron impresoras instaladas.");
+
+            return;
+
+        }
+
+        Console.WriteLine("Impresoras disponibles:");
+
+        for (int i = 0; i < printers.Count; i++)
+        {
+
+            Console.WriteLine($"{i + 1}: {printers[i]}");
+
+        }
+
+        Console.WriteLine("Seleccione el número de la impresora a utilizar:");
+
+        int printerIndex;
+
+        string printerInput = Console.ReadLine();
+
+        while (!int.TryParse(printerInput, out printerIndex) || printerIndex < 1 || printerIndex > printers.Count)
+        {
+
+            Console.WriteLine("Selección inválida. Intente nuevamente:");
+
+            printerInput = Console.ReadLine();
+
+        }
+
+        string selectedPrinter = printers[printerIndex - 1];
+
+        Printer printer = new Printer(selectedPrinter);
+        #endregion
+
+        #region Seleccionar puerto (Recomendado COM9 "PAX")
         List<string> ports = POSAutoservicio.Instance.ListPorts();
 
         if (ports == null || ports.Count == 0)
@@ -49,77 +107,127 @@ class Program
         }
 
         string selectedPort = ports[portIndex - 1];
+        #endregion
+
 
         try
         {
 
-            POSAutoservicio.Instance.OpenPort(selectedPort);
+            bool @continue = true;
 
-            Console.WriteLine("Ingrese el monto a solicitar:");
-
-            string input = Console.ReadLine();
-
-            int amount;
-
-            while (!int.TryParse(input, out amount) || amount < 50)
+            while (@continue)
             {
 
-                Console.WriteLine("Monto inválido. Debe ser un número mayor o igual a 50. Intente nuevamente:");
+                POSAutoservicio.Instance.OpenPort(selectedPort);
 
-                input = Console.ReadLine();
+                Console.WriteLine("\nSeleccione la acción a realizar:");
+
+                Console.WriteLine("1. Venta");
+
+                Console.WriteLine("2. Cierre");
+
+                Console.WriteLine("3. Salir");
+
+                Console.Write("Ingrese el número de la opción: ");
+
+                Console.WriteLine("Puertos disponibles:");
+
+                int optionIndex;
+
+                string optionInput = Console.ReadLine();
+
+                if (!int.TryParse(optionInput, out optionIndex) || optionIndex < 1 || optionIndex > 3)
+                {
+
+                    Console.WriteLine("Opción inválida. Intente nuevamente.");
+
+                    continue;
+
+                }
+
+                switch (optionIndex)
+                {
+
+                    case 1: // Venta
+
+                        Console.WriteLine("Ingrese el monto a solicitar:");
+
+                        string input = Console.ReadLine();
+
+                        int amount;
+
+                        while (!int.TryParse(input, out amount) || amount < 50)
+                        {
+
+                            Console.WriteLine("Monto inválido. Debe ser un número mayor o igual a 50. Intente nuevamente:");
+
+                            input = Console.ReadLine();
+
+                        }
+
+                        Console.WriteLine("Ingrese el ticket (máx 20 caracteres):");
+
+                        string ticket = Console.ReadLine();
+
+                        if (ticket.Length > 20)
+                        {
+
+                            ticket = ticket.Substring(0, 20);
+
+                            Console.WriteLine("El ticket fue truncado a 20 caracteres.");
+
+                        }
+
+                        POSAutoservicio.Instance.IntermediateResponseChange += NewIntermediateMessageReceived;
+
+                        var saleResponse = POSAutoservicio.Instance.Sale(amount, ticket, true, false);
+
+                        saleResponse.Wait();
+
+                        POSAutoservicio.Instance.IntermediateResponseChange -= NewIntermediateMessageReceived;
+
+                        Console.WriteLine("Venta realizada exitosamente:");
+
+                        await printer.PrintVoucher(saleResponse.Result.Response, ReceiptType.Sale);
+
+                        break;
+
+                    case 2: // Cierre
+
+                        POSAutoservicio.Instance.IntermediateResponseChange += NewIntermediateMessageReceived;
+
+                        var closeResponse = POSAutoservicio.Instance.Close(true);
+
+                        closeResponse.Wait();
+
+                        POSAutoservicio.Instance.IntermediateResponseChange -= NewIntermediateMessageReceived;
+
+                        Console.WriteLine("Cierre realizado:");
+
+                        await printer.PrintVoucher(closeResponse.Result.Response, ReceiptType.Close);
+
+                        break;
+
+                    case 3: // Salir
+
+                        @continue = false;
+
+                        break;
+
+                }
+
+                POSAutoservicio.Instance.ClosePort();
 
             }
-
-            Console.WriteLine("Ingrese el ticket (máx 20 caracteres):");
-
-            string ticket = Console.ReadLine();
-
-            if (ticket.Length > 20)
-            {
-
-                ticket = ticket.Substring(0, 20);
-
-                Console.WriteLine("El ticket fue truncado a 20 caracteres.");
-
-            }
-
-            POSAutoservicio.Instance.IntermediateResponseChange += NewIntermediateMessageReceived;
-
-            Task<SaleResponse> response = POSAutoservicio.Instance.Sale(amount, ticket, true, true);
-
-            response.Wait();
-
-            // Crear instancia del printer
-            EpsonTM30Printer printer = new EpsonTM30Printer("EPSON TM-m30 Receipt");
-
-            // Verificar que la impresora esté disponible
-            if (!printer.IsPrinterAvailable())
-            {
-
-                Console.WriteLine("Impresora no encontrada. Impresoras disponibles:");
-                
-                printer.ListAvailablePrinters();
-                
-                return;
-            
-            }
-
-            // Imprimir el resultado
-            await printer.PrintSaleResult(response.Result.Response);
 
         }
 
         catch (Exception ex)
         {
 
-            Console.WriteLine("Error al realizar la venta: " + ex.Message);
-
-        }
-
-        finally
-        {
-
             POSAutoservicio.Instance.ClosePort();
+
+            Console.WriteLine("Error al realizar la venta: " + ex.Message);
 
         }
 
@@ -145,32 +253,79 @@ class Program
         Console.WriteLine($"Mensaje: {e.ResponseMessage}");
 
     }
-}
 
-public class EpsonTM30Printer
+}
+ 
+public class Printer
 {
 
     private string _printerName;
 
-    public EpsonTM30Printer(string printerName = null)
+    public Printer(string printerName = null)
     {
 
         _printerName = printerName ?? "EPSON TM-m30 Receipt"; // Nombre por defecto
 
     }
 
-    // Método principal para imprimir el resultado de la venta
-    public async Task PrintSaleResult(string saleResponse)
+    public async Task PrintVoucher(string voucher ,ReceiptType receiptType)
     {
 
         try
         {
 
-            // Formatear el comprobante
-            string receiptText = FormatTransbankReceipt(saleResponse);
+            string receiptText;
 
-            // Imprimir usando PrintDocument
-            PrintReceipt(receiptText);
+            switch(receiptType)
+            {
+
+                case ReceiptType.Sale:
+
+
+                    receiptText = FormatTransbankReceipt(voucher);
+
+                    Console.WriteLine("Imprimiendo comprobante de venta...");
+
+                    break;
+
+                case ReceiptType.Close:
+
+                    receiptText = FormatTransbankClose(voucher);
+
+                    Console.WriteLine("Imprimiendo comprobante de cierre...");
+
+                    break;
+
+                default:
+
+                    throw new ArgumentException("Tipo de recibo no soportado");
+
+            }
+
+            PrintDocument printDocument = new PrintDocument();
+
+            printDocument.PrinterSettings.PrinterName = _printerName;
+
+            printDocument.DefaultPageSettings.PaperSize = new PaperSize("Custom", 315, 600);
+
+            printDocument.DefaultPageSettings.Margins = new Margins(5, 5, 5, 5);
+
+            printDocument.PrintPage += (sender, e) =>
+            {
+
+                if (receiptType == ReceiptType.Sale)
+
+                    LayoutSaleContent(e, receiptText);
+
+                if (receiptType == ReceiptType.Close)
+
+                    LayoutCloseContent(e, receiptText);
+
+            };
+
+            printDocument.Print();
+
+            printDocument.Dispose();
 
             Console.WriteLine("Comprobante impreso exitosamente");
 
@@ -185,46 +340,8 @@ public class EpsonTM30Printer
 
     }
 
-    // Método para imprimir usando PrintDocument
-    public void PrintReceipt(string receiptText)
-    {
-
-        try
-        {
-
-            PrintDocument printDocument = new PrintDocument();
-
-            printDocument.PrinterSettings.PrinterName = _printerName;
-
-            // Configurar el papel para impresora térmica (80mm)
-            printDocument.DefaultPageSettings.PaperSize = new PaperSize("Custom", 315, 600); // 80mm de ancho
-
-            printDocument.DefaultPageSettings.Margins = new Margins(5, 5, 5, 5);
-
-            printDocument.PrintPage += (sender, e) =>
-            {
-
-                PrintReceiptContent(e, receiptText);
-
-            };
-
-            printDocument.Print();
-
-            printDocument.Dispose();
-
-        }
-
-        catch (Exception ex)
-        {
-
-            Console.WriteLine($"Error al imprimir: {ex.Message}");
-
-        }
-
-    }
-
     // Método para imprimir el contenido del comprobante
-    private void PrintReceiptContent(PrintPageEventArgs e, string receiptText)
+    private void LayoutSaleContent(PrintPageEventArgs e, string receiptText)
     {
         // Fuentes para diferentes secciones
         Font titleFont = new Font("Arial", 10, FontStyle.Bold);
@@ -291,6 +408,69 @@ public class EpsonTM30Printer
         brush.Dispose();
     }
 
+    // Método para imprimir el contenido del cierre
+    private void LayoutCloseContent(PrintPageEventArgs e, string closeText)
+    {
+        Font titleFont = new Font("Arial", 10, FontStyle.Bold);
+        Font normalFont = new Font("Arial", 8, FontStyle.Regular);
+        Font smallFont = new Font("Arial", 7, FontStyle.Regular);
+
+        SolidBrush brush = new SolidBrush(Color.Black);
+
+        string[] lines = closeText.Split('\n');
+        float yPos = 10;
+        float lineHeight = normalFont.GetHeight(e.Graphics);
+        float pageWidth = e.PageBounds.Width - 20; // Margen de 10 a cada lado
+
+        foreach (string line in lines)
+        {
+            string trimmedLine = line.Trim();
+            if (string.IsNullOrEmpty(trimmedLine))
+            {
+                yPos += lineHeight * 0.5f;
+                continue;
+            }
+
+            Font currentFont = normalFont;
+            StringFormat format = new StringFormat();
+
+            // Formato especial para encabezados y totales
+            if (trimmedLine.Contains("REPORTE DEL CIERRE DEL TERMINAL") ||
+                trimmedLine.Contains("INTEGRACIONES TRANSBANK") ||
+                trimmedLine.Contains("TRANSBANK S.A.") ||
+                trimmedLine.Contains("GRACIAS POR SU COMPRA") ||
+                trimmedLine.Contains("TOTAL CAPTURAS"))
+            {
+                currentFont = titleFont;
+                format.Alignment = StringAlignment.Center;
+            }
+            else if (trimmedLine.Contains("FECHA") && trimmedLine.Contains("HORA"))
+            {
+                currentFont = smallFont;
+                format.Alignment = StringAlignment.Near;
+            }
+            else if (trimmedLine.Contains("----------------------------------------"))
+            {
+                format.Alignment = StringAlignment.Center;
+            }
+            else
+            {
+                format.Alignment = StringAlignment.Near;
+            }
+
+            RectangleF rect = new RectangleF(10, yPos, pageWidth, lineHeight);
+            e.Graphics.DrawString(trimmedLine, currentFont, brush, rect, format);
+
+            yPos += currentFont.GetHeight(e.Graphics);
+        }
+
+        // Limpiar recursos
+        titleFont.Dispose();
+        normalFont.Dispose();
+        smallFont.Dispose();
+        brush.Dispose();
+    }
+
     // Método para formatear el comprobante de Transbank
     public string FormatTransbankReceipt(string rawResponse)
     {
@@ -340,6 +520,83 @@ public class EpsonTM30Printer
         }
 
         return formattedReceipt.ToString();
+    }
+
+    // Método para formatear el cierre de Transbank
+    public string FormatTransbankClose(string rawResponse)
+    {
+        // Separar por pipe
+        string[] data = rawResponse.Split('|');
+        if (data.Length < 5)
+            return rawResponse;
+
+        StringBuilder sb = new StringBuilder();
+
+        // Encabezado
+        sb.AppendLine("REPORTE DEL CIERRE DEL TERMINAL");
+        sb.AppendLine("INTEGRACIONES TRANSBANK");
+        sb.AppendLine("TRANSBANK S.A.");
+        sb.AppendLine("ISIDORA GOYENECHEA 3520");
+        sb.AppendLine("111111111");
+        sb.AppendLine("Santiago");
+        sb.AppendLine($"{data[2]}-M252L3");
+        sb.AppendLine();
+
+        // Buscar y formatear fecha, hora y terminal
+        string cuerpo = data[4];
+        int idxFecha = cuerpo.IndexOf("FECHA");
+        int idxNum = cuerpo.IndexOf("NUMERO");
+        if (idxFecha > 0 && idxNum > idxFecha)
+        {
+            string header = cuerpo.Substring(0, idxNum);
+            string totales = cuerpo.Substring(idxNum);
+
+            // Extraer fecha, hora y terminal
+            int idxTerminal = header.IndexOf("TERMINAL");
+            if (idxTerminal > 0)
+            {
+                string fechaHoraTerminal = header.Substring(idxTerminal + 8).Trim();
+                sb.AppendLine("FECHA        HORA        TERMINAL");
+                sb.AppendLine(fechaHoraTerminal);
+                sb.AppendLine();
+            }
+
+            // Extraer totales por tarjeta y total capturas
+            string[] lineas = totales.Split(new[] { "----------------------------------------" }, StringSplitOptions.None);
+            if (lineas.Length > 1)
+            {
+                string detalle = lineas[0];
+                string total = lineas[1];
+
+                // Detalle por tarjeta
+                var tarjetas = detalle.Split(new[] { "VISA", "MASTERCARD" }, StringSplitOptions.RemoveEmptyEntries);
+                if (detalle.Contains("MASTERCARD"))
+                {
+                    int idx = detalle.IndexOf("MASTERCARD");
+                    string mc = "MASTERCARD" + detalle.Substring(idx + "MASTERCARD".Length).Split('V')[0];
+                    sb.AppendLine(mc.Trim());
+                }
+                if (detalle.Contains("VISA"))
+                {
+                    int idx = detalle.IndexOf("VISA");
+                    string visa = "VISA" + detalle.Substring(idx + "VISA".Length);
+                    sb.AppendLine(visa.Trim());
+                }
+
+                sb.AppendLine("----------------------------------------");
+                sb.AppendLine(total.Trim());
+            }
+            else
+            {
+                sb.AppendLine(totales.Trim());
+            }
+        }
+        else
+        {
+            sb.AppendLine(cuerpo.Trim());
+        }
+
+        return sb.ToString();
     }
 
     // Método para verificar si la impresora está disponible
