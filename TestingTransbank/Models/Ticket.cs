@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace SalidaAutomaticaQR.Models;
 
-public partial class Boletum
+public partial class Ticket
 {
     public int NumTicket { get; set; }
 

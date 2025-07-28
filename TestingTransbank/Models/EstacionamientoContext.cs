@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using TestingTransbank.Helpers;
 
 namespace SalidaAutomaticaQR.Models;
 
@@ -10,25 +11,20 @@ public partial class EstacionamientoContext : DbContext
 
     private readonly string _connectionString;
 
-    public EstacionamientoContext()
+    public EstacionamientoContext(string connectionString = null)
     {
 
-        // Configuración
-        var config = new ConfigurationBuilder()
+        if (connectionString == null) {
 
-            .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+            _connectionString = ConfigurationHelper.SelectedConnectionString;
+        
+        }
 
-            .Build();
+        else
+        {
 
-        var conexionSeleccionada = config["ConexionSeleccionada"];
-
-        // Obtener la sección "Conexiones"
-        var conexiones = config.GetSection("Conexiones");
-
-        // Obtener la cadena de conexión correspondiente
-        var cadenaConexion = conexiones[conexionSeleccionada];
-
-        _connectionString = cadenaConexion;
+            _connectionString = connectionString;
+        }
 
     }
 
@@ -37,11 +33,13 @@ public partial class EstacionamientoContext : DbContext
     {
     }
 
-    public virtual DbSet<Boletum> Boleta { get; set; }
+    public virtual DbSet<Ticket> Ticket { get; set; }
 
     public virtual DbSet<Parametro> Parametros { get; set; }
 
     public virtual DbSet<Variable> Variables { get; set; }
+
+    public virtual DbSet<CAF> CAF { get; set; }
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
@@ -57,7 +55,7 @@ public partial class EstacionamientoContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        modelBuilder.Entity<Boletum>(entity =>
+        modelBuilder.Entity<Ticket>(entity =>
         {
             entity.HasKey(e => new { e.NumTicket, e.NumBoleta, e.NumCaja })
                 .HasName("PK_boleta_1")
@@ -158,6 +156,26 @@ public partial class EstacionamientoContext : DbContext
             entity
                 .HasNoKey()
                 .ToTable("variables");
+        });
+
+        modelBuilder.Entity<CAF>(entity =>
+        {
+
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.NombreRuta)
+                .HasMaxLength(500)
+                .IsUnicode(false)
+                .HasColumnName("nombre_ruta");
+            entity.Property(e => e.NombreArchivo)
+                .HasMaxLength(500)
+                .IsUnicode(false)
+                .HasColumnName("nombre_archivo");
+
+            entity.Property(e => e.XmlArchivo)
+                .HasMaxLength(500)
+                .IsUnicode(false)
+                .HasColumnName("xml_archivo");
         });
 
         OnModelCreatingPartial(modelBuilder);
