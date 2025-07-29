@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using TestingTransbank.Managers;
+using TestingTransbank.Repositories;
 using TestingTransbank.Services;
 
 class Program

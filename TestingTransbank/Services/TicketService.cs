@@ -1,10 +1,6 @@
 ﻿using SalidaAutomaticaQR.Models;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using TestingTransbank.Helper;
+using TestingTransbank.Repositories;
 
 namespace TestingTransbank.Services
 {

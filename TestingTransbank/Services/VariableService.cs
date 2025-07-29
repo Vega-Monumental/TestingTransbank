@@ -1,4 +1,4 @@
-﻿using SalidaAutomaticaQR.Models;
+﻿using TestingTransbank.Repositories;
 
 namespace TestingTransbank.Services
 {

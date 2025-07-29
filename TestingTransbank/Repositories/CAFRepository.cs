@@ -1,7 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using SalidaAutomaticaQR.Models;
 
-namespace TestingTransbank.Services
+namespace TestingTransbank.Repositories
 {
     public class CAFRepository
     {
