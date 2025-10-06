@@ -61,7 +61,7 @@ namespace TestingTransbank.Managers
                 Console.WriteLine($"Probando conexión a: {ConfigurationHelper.SelectedDatabase}...");
 
                 // Probar la conexión
-                conexionExitosa = await _databaseService.TestConnectionAsync(ConfigurationHelper.SelectedConnectionString);
+                conexionExitosa = await _databaseService.TestConnectionAsync(selectedConnectionString);
 
                 if (conexionExitosa)
                 {

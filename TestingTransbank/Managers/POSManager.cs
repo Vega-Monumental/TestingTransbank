@@ -54,7 +54,7 @@ namespace TestingTransbank.Managers
 
                     Console.WriteLine("4. Venta básica");
 
-                    Console.WriteLine("5. Venta completa");
+                    Console.WriteLine("5. Venta completa (Operacíón Vega Monumental)");
 
                     Console.WriteLine("6. Cierre");
 
@@ -66,7 +66,7 @@ namespace TestingTransbank.Managers
 
                     string optionInput = Console.ReadLine();
 
-                    if (int.TryParse(optionInput, out optionIndex) && optionIndex <= 1 && optionIndex >= 7)
+                    if (int.TryParse(optionInput, out optionIndex) && optionIndex >= 1 && optionIndex <= 7)
                     {
 
                         switch (optionIndex)
@@ -99,7 +99,7 @@ namespace TestingTransbank.Managers
 
                             case 5:
 
-                                await PersonalizedSalePOS();
+                                //await PersonalizedSalePOS();
 
                                 break;
 
