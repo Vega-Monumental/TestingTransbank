@@ -1,12 +1,17 @@
-﻿using SalidaAutomaticaQR.Models;
+﻿using Azure;
+using NAudio.CoreAudioApi;
+using SalidaAutomaticaQR.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Sockets;
 using System.Text;
 using System.Threading.Tasks;
 using TestingTransbank.Helpers;
+using TestingTransbank.Models;
 using TestingTransbank.Services;
 using Transbank.POSAutoservicio;
+using Transbank.Responses.AutoservicioResponse;
 using Transbank.Responses.CommonResponses;
 
 namespace TestingTransbank.Managers
@@ -44,7 +49,9 @@ namespace TestingTransbank.Managers
 
                     POSAutoservicio.Instance.OpenPort(ConfigurationHelper.SelectedPort);
 
-                    Console.WriteLine("\nSeleccione la acción a realizar:");
+                    Console.WriteLine("Seleccione la acción a realizar:");
+
+                    Console.WriteLine();
 
                     Console.WriteLine("1. Verificar conexión");
 
@@ -52,21 +59,35 @@ namespace TestingTransbank.Managers
 
                     Console.WriteLine("3. Inicializar");
 
-                    Console.WriteLine("4. Venta básica");
+                    Console.WriteLine("4. Respuesta de inicialización");
 
-                    Console.WriteLine("5. Venta completa (Operacíón Vega Monumental)");
+                    Console.WriteLine("5. Venta básica");
 
-                    Console.WriteLine("6. Cierre");
+                    Console.WriteLine("6. Venta completa (Operacíón Vega Monumental)");
 
-                    Console.WriteLine("7. Salir");
+                    Console.WriteLine("7. Venta Multicode");
 
-                    Console.Write("Ingrese el número de la opción: ");
+                    Console.WriteLine("8. Última venta");
+
+                    Console.WriteLine("9. Reembolso");
+
+                    Console.WriteLine("10. Cierre");
+
+                    Console.WriteLine("11. Salir");
+
+                    Console.WriteLine();
+
+                    Console.WriteLine("Ingrese el número de la opción: ");
+
+                    Console.WriteLine();
 
                     int optionIndex;
 
                     string optionInput = Console.ReadLine();
 
-                    if (int.TryParse(optionInput, out optionIndex) && optionIndex >= 1 && optionIndex <= 7)
+                    Console.WriteLine();
+
+                    if (int.TryParse(optionInput, out optionIndex) && optionIndex >= 1 && optionIndex <= 11)
                     {
 
                         switch (optionIndex)
@@ -92,33 +113,56 @@ namespace TestingTransbank.Managers
 
                             case 4:
 
-                                await BasicSalePOS();
+                                await InitializeResponsePOS();
 
                                 break;
 
 
                             case 5:
 
-                                //await PersonalizedSalePOS();
+                                await BasicSalePOS();
 
                                 break;
 
 
-                            case 6: // Cierre
+                            case 6:
+
+                                await PersonalizedSalePOS();
+
+                                break;
+
+
+                            case 7:
+
+                                await MulticodeSalePOS();
+
+                                break;
+
+
+                            case 8:
+
+                                await LastSalePOS();
+
+                                break;
+
+                            case 9:
+
+                                await RefundPOS();
+
+                                break;
+
+
+                            case 10:
 
                                 await ClosePOS();
 
                                 break;
 
+                            case 11:
 
-                            case 7: // Salir
-                                {
+                                @continue = false;
 
-                                    @continue = false;
-
-                                    break;
-
-                                }
+                                break;
 
                         }
 
@@ -142,7 +186,7 @@ namespace TestingTransbank.Managers
 
                 POSAutoservicio.Instance.ClosePort();
 
-                Console.WriteLine("Error al realizar la venta: " + ex.Message);
+                Console.WriteLine("\nError al realizar la venta: " + ex.Message);
 
             }
 
@@ -151,70 +195,201 @@ namespace TestingTransbank.Managers
         public async Task PollPOS ()
         {
 
-            Task<bool> pollResult = POSAutoservicio.Instance.Poll();
 
-            pollResult.Wait();
-
-            if (pollResult.Result)
+            try
             {
 
-                Console.WriteLine("Pos Connected");
+                POSAutoservicio.Instance.IntermediateResponseChange -= _posService.NewIntermediateMessageReceived;
+
+                Task<bool> response = POSAutoservicio.Instance.Poll();
+
+                response.Wait();
+
+                POSAutoservicio.Instance.IntermediateResponseChange += _posService.NewIntermediateMessageReceived;
+
+                Console.WriteLine();
+
+                Console.WriteLine(response.Result);
+
+                Console.WriteLine();
+
+                if (response.Result)
+                {
+
+                    Console.WriteLine("POS conectado");
+
+                    Console.WriteLine();
+
+
+                }
+
+                else
+                {
+
+                    Console.WriteLine("POS no conectado");
+
+                    Console.WriteLine();
+
+                }
+
 
             }
 
-            else
+            catch (Exception e)
             {
 
-                Console.WriteLine("Pos NOT Connected");
+                Console.WriteLine("Error: " + e.Message);
 
             }
+
 
         }
 
         public async Task LoadKeysPOS()
         {
 
-            Task<LoadKeysResponse> loadKeyResponse = POSAutoservicio.Instance.LoadKeys();
-
-            loadKeyResponse.Wait();
-
-            Console.WriteLine(loadKeyResponse.Result);
-
-            if (loadKeyResponse.Result.Success)
+            try
             {
 
-                Console.WriteLine("Carga de llaves exitosa.");
+                POSAutoservicio.Instance.IntermediateResponseChange -= _posService.NewIntermediateMessageReceived;
+
+                Task<LoadKeysResponse> response = POSAutoservicio.Instance.LoadKeys();
+
+                response.Wait();
+
+                POSAutoservicio.Instance.IntermediateResponseChange += _posService.NewIntermediateMessageReceived;
+
+                Console.WriteLine();
+
+                Console.WriteLine(response.Result);
+
+                Console.WriteLine();
+
+                if (response.Result.Success)
+                {
+
+
+                    Console.WriteLine("Carga de llaves exitosa.");
+
+                    Console.WriteLine();
+
+                }
+
+                else
+                {
+
+                    Console.WriteLine("No se pudo realizar la carga de llaves.");
+
+                    Console.WriteLine();
+
+                }
 
             }
 
-            else
+            catch (Exception e)
             {
 
-                Console.WriteLine("No se pudo realizar la carga de llaves.");
+                Console.WriteLine("Error: " + e.Message);
 
             }
+
 
         }
 
         public async Task InitializePOS()
         {
 
-            Task<bool> initializationResult = POSAutoservicio.Instance.Initialization();
-
-            initializationResult.Wait();
-
-            if (initializationResult.Result)
+            try
             {
 
-                Console.WriteLine("Pos Initialized");
+                POSAutoservicio.Instance.IntermediateResponseChange -= _posService.NewIntermediateMessageReceived;
+
+                Task<bool> response = POSAutoservicio.Instance.Initialization();
+
+                response.Wait();
+
+                POSAutoservicio.Instance.IntermediateResponseChange += _posService.NewIntermediateMessageReceived;
+
+                Console.WriteLine();
+
+                Console.WriteLine(response.Result);
+
+                Console.WriteLine();
+
+                if (response.Result)
+                {
+
+                    Console.WriteLine("POS inicializado exitosamente, verifique el estado presionando (4)");
+
+                    Console.WriteLine();
+
+                }
+
+                else
+                {
+
+                    Console.WriteLine("POS no inicializado");
+
+                    Console.WriteLine();
+
+                }
 
             }
 
-            else
+            catch (Exception e)
             {
 
-                Console.WriteLine("Pos NOT Initialized");
+                Console.WriteLine("Error: " + e.Message);
 
+            }
+
+        }
+
+        public async Task InitializeResponsePOS()
+        {
+
+            try
+            {
+
+                POSAutoservicio.Instance.IntermediateResponseChange -= _posService.NewIntermediateMessageReceived;
+
+                Task<InitializationResponse> response = POSAutoservicio.Instance.InitializationResponse();
+
+                response.Wait();
+
+                POSAutoservicio.Instance.IntermediateResponseChange += _posService.NewIntermediateMessageReceived;
+
+                Console.WriteLine();
+
+                Console.WriteLine(response.Result);
+
+                Console.WriteLine();
+
+                if (response.Result.Success)
+                {
+
+                    Console.WriteLine("POS verificado exitosamente");
+
+                    Console.WriteLine();
+
+                }
+
+                else
+                {
+
+                    Console.WriteLine("No se logró verificar la respuesta de inicialización");
+
+                    Console.WriteLine();
+
+                }
+            }
+            
+            catch (Exception e)
+            {
+            
+                Console.WriteLine("Error: " + e.Message);
+                
+            
             }
 
         }
@@ -224,7 +399,11 @@ namespace TestingTransbank.Managers
 
             Console.WriteLine("Ingrese el monto a solicitar:");
 
+            Console.WriteLine();
+
             string input = Console.ReadLine();
+
+            Console.WriteLine();
 
             int amount;
 
@@ -239,7 +418,11 @@ namespace TestingTransbank.Managers
 
             Console.WriteLine("Ingrese el ticket (máx 20 caracteres):");
 
+            Console.WriteLine();
+
             string ticket = Console.ReadLine();
+
+            Console.WriteLine();
 
             if (ticket.Length > 20)
             {
@@ -248,19 +431,58 @@ namespace TestingTransbank.Managers
 
                 Console.WriteLine("El ticket fue truncado a 20 caracteres.");
 
+                Console.WriteLine();
+
             }
 
-            POSAutoservicio.Instance.IntermediateResponseChange += _posService.NewIntermediateMessageReceived;
+            try
+            {
 
-            var saleResponse = POSAutoservicio.Instance.Sale(amount, ticket, true, false);
+                POSAutoservicio.Instance.IntermediateResponseChange += _posService.NewIntermediateMessageReceived;
 
-            saleResponse.Wait();
+                Task<SaleResponse> response = POSAutoservicio.Instance.Sale(amount, ticket, true, true);
 
-            POSAutoservicio.Instance.IntermediateResponseChange -= _posService.NewIntermediateMessageReceived;
+                response.Wait();
 
-            Console.WriteLine("Venta realizada exitosamente:");
+                POSAutoservicio.Instance.IntermediateResponseChange -= _posService.NewIntermediateMessageReceived;
 
-            _printerService.PrintTransbankVoucher(saleResponse.Result.Response, ReceiptType.Sale);
+                Console.WriteLine();
+
+                Console.WriteLine(response.Result);
+
+                Console.WriteLine();
+
+                if (response.Result.Success)
+                {
+
+
+                    Console.WriteLine("Venta realizada con éxito");
+
+                    Console.WriteLine();
+
+                    _printerService.PrintTransbankVoucher(response.Result.Response, ReceiptType.Sale);
+
+                }
+
+                else
+                {
+
+                    Console.WriteLine("No se logró realizar la venta");
+
+                    Console.WriteLine();
+
+                }
+
+            }
+
+            catch (Exception e)
+            {
+
+                Console.WriteLine("Error: " + e.Message);
+
+
+            }
+
 
         }
 
@@ -383,20 +605,303 @@ namespace TestingTransbank.Managers
 
         }
 
-        public async Task ClosePOS ()
+        public async Task MulticodeSalePOS()
         {
 
-            POSAutoservicio.Instance.IntermediateResponseChange += _posService.NewIntermediateMessageReceived;
 
-            var closeResponse = POSAutoservicio.Instance.Close(true);
+            Console.WriteLine("Ingrese el monto a solicitar:");
 
-            closeResponse.Wait();
+            Console.WriteLine();
 
-            POSAutoservicio.Instance.IntermediateResponseChange -= _posService.NewIntermediateMessageReceived;
+            string input = Console.ReadLine();
 
-            Console.WriteLine("Cierre realizado:");
+            Console.WriteLine();
 
-            _printerService.PrintTransbankVoucher(closeResponse.Result.Response, ReceiptType.Close);
+            int amount;
+
+            while (!int.TryParse(input, out amount) || amount < 50)
+            {
+
+                Console.WriteLine("Monto inválido. Debe ser un número mayor o igual a 50. Intente nuevamente:");
+
+                input = Console.ReadLine();
+
+            }
+
+            Console.WriteLine("Ingrese el ticket (máx 20 caracteres):");
+
+            Console.WriteLine();
+
+            string ticket = Console.ReadLine();
+
+            Console.WriteLine();
+
+            if (ticket.Length > 20)
+            {
+
+                ticket = ticket.Substring(0, 20);
+
+                Console.WriteLine("El ticket fue truncado a 20 caracteres.");
+
+                Console.WriteLine();
+
+            }
+
+            // Lista con los valores
+            List<long> commerceCodes = new List<long>
+            {
+
+                597029414300,
+
+                597029414301,
+
+                597029414302,
+
+                597029414303,
+
+                597029414304,
+
+                597029414305,
+
+                597029414306,
+
+                597029414307,
+
+                597029414308
+
+            };
+
+            Console.WriteLine("Códigos de comercio disponibles:");
+
+            Console.WriteLine();
+
+            for (int i = 0; i < commerceCodes.Count; i++)
+            {
+
+                Console.WriteLine($"{i + 1}: {commerceCodes[i]}");
+
+            }
+
+            Console.WriteLine($"\nSeleccione el numero del código de comercio a utilizar (1 - {commerceCodes.Count}):");
+
+            int commerceCodeIndex;
+
+            Console.WriteLine();
+
+            string commerceCodeInput = Console.ReadLine();
+
+            Console.WriteLine();
+
+            while (!int.TryParse(commerceCodeInput, out commerceCodeIndex) || commerceCodeIndex < 1 || commerceCodeIndex > commerceCodes.Count)
+            {
+
+                Console.WriteLine("Selección inválida. Intente nuevamente:");
+
+                commerceCodeInput = Console.ReadLine();
+
+            }
+
+            long selectedCommerceCode = commerceCodes[commerceCodeIndex - 1];
+
+            try
+            {
+
+                POSAutoservicio.Instance.IntermediateResponseChange += _posService.NewIntermediateMessageReceived;
+
+                Task<MultiCodeSaleResponse> response = POSAutoservicio.Instance.MultiCodeSale(amount, ticket, selectedCommerceCode, true, false);
+
+                response.Wait();
+
+                POSAutoservicio.Instance.IntermediateResponseChange -= _posService.NewIntermediateMessageReceived;
+
+                Console.WriteLine();
+
+                Console.WriteLine(response.Result);
+
+                Console.WriteLine();
+
+                if (response.Result.Success)
+                {
+
+                    Console.WriteLine("Venta realizada con éxito");
+
+                    Console.WriteLine();
+
+                    _printerService.PrintTransbankVoucher(response.Result.Response, ReceiptType.Sale);
+
+                }
+
+                else
+                {
+
+                    Console.WriteLine("No se logró realizar la venta");
+
+                    Console.WriteLine();
+
+                }
+
+            }
+
+            catch (Exception e)
+            {
+
+                Console.WriteLine("Error: " + e.Message);
+
+            }
+
+        }
+
+        public async Task LastSalePOS()
+        {
+
+            try
+            {
+
+
+                POSAutoservicio.Instance.IntermediateResponseChange += _posService.NewIntermediateMessageReceived;
+
+                Task<LastSaleResponse> response = POSAutoservicio.Instance.LastSale(true);
+
+                response.Wait();
+
+                POSAutoservicio.Instance.IntermediateResponseChange -= _posService.NewIntermediateMessageReceived;
+
+                Console.WriteLine();
+
+                Console.WriteLine(response.Result);
+
+                Console.WriteLine();
+
+                if (response.Result.Success)
+                {
+
+                    Console.WriteLine("Última venta obtenida con éxito");
+
+                    Console.WriteLine();
+
+                    _printerService.PrintTransbankVoucher(response.Result.Response, ReceiptType.Sale);
+
+                }
+
+                else
+                {
+
+                    Console.WriteLine("No se pudo obtener la última venta");
+
+                    Console.WriteLine();
+
+                }
+
+            }
+
+            catch (Exception e)
+            {
+
+                Console.WriteLine("Error: " + e.Message);
+
+
+            }
+
+        }
+
+        public async Task RefundPOS()
+        {
+
+            try
+            {
+
+                POSAutoservicio.Instance.IntermediateResponseChange += _posService.NewIntermediateMessageReceived;
+
+                Task<RefundResponse> response = POSAutoservicio.Instance.Refund();
+
+                response.Wait();
+
+                POSAutoservicio.Instance.IntermediateResponseChange -= _posService.NewIntermediateMessageReceived;
+
+                Console.WriteLine();
+
+                Console.WriteLine(response.Result);
+
+                Console.WriteLine();
+
+                if (response.Result.Success)
+                {
+
+                    Console.WriteLine("Reembolso realizado con éxito");
+
+                    Console.WriteLine();
+
+                }
+
+                else
+                {
+
+                    Console.WriteLine("No se pudo realizar el reembolso");
+
+                    Console.WriteLine();
+
+                }
+
+            }
+
+            catch (Exception e)
+            {
+
+                Console.WriteLine("Error: " + e.Message);
+
+            }
+
+        }
+
+        public async Task ClosePOS()
+        {
+
+            try
+            {
+
+                POSAutoservicio.Instance.IntermediateResponseChange += _posService.NewIntermediateMessageReceived;
+
+                Task<CloseResponse> response = POSAutoservicio.Instance.Close(true);
+
+                response.Wait();
+
+                POSAutoservicio.Instance.IntermediateResponseChange -= _posService.NewIntermediateMessageReceived;
+
+                Console.WriteLine();
+
+                Console.WriteLine(response.Result);
+
+                Console.WriteLine();
+
+                if (response.Result.Success)
+                {
+
+                    Console.WriteLine("Cierre realizado con éxito");
+
+                    Console.WriteLine();
+
+                    _printerService.PrintTransbankVoucher(response.Result.Response, ReceiptType.Close);
+
+                }
+
+                else
+                {
+
+                    Console.WriteLine("No se pudo realizar el cierre");
+
+                    Console.WriteLine();
+
+                }
+
+
+            }
+
+            catch (Exception e)
+            {
+
+                Console.WriteLine("Error: " + e.Message);
+
+            }
 
         }
 

@@ -58,6 +58,8 @@ namespace TestingTransbank.Services
 
                         Console.WriteLine("Imprimiendo voucher de venta...");
 
+                        Console.WriteLine();
+
                         break;
 
                     case ReceiptType.Close:
@@ -65,6 +67,8 @@ namespace TestingTransbank.Services
                         receiptText = FormatTransbankClose(voucher);
 
                         Console.WriteLine("Imprimiendo voucher de cierre...");
+
+                        Console.WriteLine();
 
                         break;
 
@@ -100,6 +104,8 @@ namespace TestingTransbank.Services
                 printDocument.Dispose();
 
                 Console.WriteLine("Voucher impreso exitosamente");
+
+                Console.WriteLine();
 
             }
 

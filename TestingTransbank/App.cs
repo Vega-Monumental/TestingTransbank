@@ -51,7 +51,7 @@ public class App
 
         _printerManager.SelectPort();
 
-        await _databaseManager.SelectDatabase();
+        //await _databaseManager.SelectDatabase();
 
         await _posManager.SelectOperationLoop();
 
